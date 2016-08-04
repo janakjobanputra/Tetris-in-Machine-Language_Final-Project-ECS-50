@@ -1,0 +1,98 @@
+	.EQU    	TDR_CNTL,$020
+	.EQU    	TDR_STAT,$020
+	.EQU    	TDR_LEN,$021
+	.EQU    	TDR_ADDR,$022
+
+	.EQU    	PRT_CNTL, $010
+	.EQU    	PRT_STAT, $010
+	.EQU    	PRT_DATA, $011
+
+	.EQU    	READ_BITS,$10
+	.EQU    	MOUNTED_BIT,$20
+	.EQU    	EOT_BIT,$08
+	.EQU    	REWIND_BITS, $30
+	.EQU    	ON_LINE_BIT, $20
+
+	.EQU    	NEXT_LINE_VALUE, 'R'
+
+	.EQU    	PUT_STR, $E05
+	.EQU    	PUT_NL,  $E06
+
+MAIN:   	INB     	TDR_STAT        ; check for tape drive ready
+	AND#    	MOUNTED_BIT
+	JEQ     	UNMOUNTED
+POLL2:  	INB     	TDR_STAT
+	JGE     	POLL2
+	LDA#    	REWIND_BITS
+	OUTB    	TDR_CNTL
+POL:    	INB     	TDR_STAT
+	JGE     	POL
+	LDA#    	BUFFER          ; load transfer address
+	OUTW    	TDR_ADDR
+NEXT_REC: LDA#  	B_SIZE          ; load transfer length
+	OUTB    	TDR_LEN
+	LDA#    	READ_BITS       ; initiate read
+	OUTB    	TDR_CNTL 
+POLL:   	INB     	TDR_STAT        ; wait for operation complete
+	JLT     	COMPLETE
+	AND#    	MOUNTED_BIT     ; check that tape still mounted
+	JEQ     	UNMOUNTED            ; if not, an error has occurred
+	JMP     	POLL
+COMPLETE: AND#  	EOT_BIT         ; check for end of tape
+	JNE     	STOP
+	INB     	PRT_STAT
+	AND#    	MOUNTED_BIT
+	JEQ     	OFFLINE
+	INB     	TDR_LEN         ; get transfer length
+	JEQ     	NEW_LINE        ; if zero, skip data output
+	STA     	COUNT           ; initialize counter count
+	LDX#    	0
+COPY_CHAR: LDC  	BUFFER
+	PSHA
+	JSR     	PRINT
+	ADS#    	1
+	AOC     	COUNT           ; loop back if not done
+	JLT     	COPY_CHAR
+NEW_LINE: PSH#  	'\CR' 
+	JSR     	PRINT
+	ADS#    	1
+	JMP     	NEXT_REC
+STOP:   	HLT
+
+UNMOUNTED: PSH# 	UNMOUNTED_LEN
+	PSH#    	UNMOUNTED_STR
+	JSR     	PUT_STR
+	ADS#    	2
+	JSR     	PUT_NL
+	HLT
+OFFLINE: 	PSH#   	OFFLINE_LEN    
+	PSH#    	OFFLINE_STR
+	JSR     	PUT_STR
+	ADS#    	2
+	JSR     	PUT_NL
+	HLT
+
+	.EQU    	CHAR, 2
+PRINT:  	BGN#    	0
+LOOP3:  	INB     	PRT_STAT
+	JLT     	READY
+	AND#    	ON_LINE_BIT
+	JNE     	LOOP3
+OFF:    	LDA#    	1
+	JMP     	DONE2
+READY:  	LDA  !  	CHAR
+	OUTB    	PRT_DATA
+	LDA#    	0
+DONE2:  	FIN#    	0
+	RTN
+
+
+
+	.EQU    	B_SIZE,30       ; max characters per record
+BUFFER: 	.BLKW   	(B_SIZE+2)/3    ; buffer length is rounded up
+COUNT:  	.BLKW   	1
+UNMOUNTED_STR: .CHAR 'The tape is not mounted', UNMOUNTED_LEN
+OFFLINE_STR: .CHAR 	'The printer is off-line', OFFLINE_LEN
+	.END
+
+

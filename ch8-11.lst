@@ -1,0 +1,56 @@
+LINE ADDR CONTENTS SOURCE LINE
+  1.              	.EQU TDR_CNTL, $020
+  2.              	.EQU TDR_STAT, $020
+  3.              	.EQU TDR_LEN, $021
+  4.              	.EQU TDR_ADDR, $022
+  5.              
+  6.              	.EQU READ_BITS, $10
+  7.              	.EQU MOUNTED_BIT, $20
+  8.              	.EQU EOT_BIT, $08
+  9.              
+ 10.              	.EQU CRT_CNTL, $316
+ 11.              	.EQU CRT_DATA, $317
+ 12.              
+ 13.              	.EQU NEXT_LINE_VALUE, $05
+ 14.              
+ 15.  000 702020  main:	inb TDR_STAT	;check for tape drive ready
+ 16.  001 4B201A  	jge STOP
+ 17.  002 00001B  	lda# buffer	;load transfer address
+ 18.  003 732022  	outw TDR_ADDR
+ 19.  004 00001E  next_rec:	lda# B_SIZE	;load transfer length
+ 20.  005 712021  	outb TDR_LEN
+ 21.  006 000010  	lda# READ_BITS	;initiate read
+ 22.  007 712020  	outb TDR_CNTL
+ 23.  008 702020  poll:	inb TDR_STAT	;wait for operation complete
+ 24.  009 4A200D  	jlt complete
+ 25.  00A 300020  	and# MOUNTED_BIT	;check that tape still mounted
+ 26.  00B 48201A  	jeq STOP	;if not an error has occurred
+ 27.  00C 402008  	jmp poll
+ 28.  00D 300008  complete:	and# EOT_BIT	;check for end of tape
+ 29.  00E 49201A  	jne stop
+ 30.  00F 702021  	inb TDR_LEN	;get transfer length
+ 31.  010 482017  	jeq new_line	;if zero skip data output
+ 32.  011 042025  	sta count	;initialize counter count
+ 33.  012 010000  	ldx# 0
+ 34.  013 50201B  copy_char:	ldc buffer	;get character
+ 35.  014 712317  	outb CRT_DATA	;copy to screen
+ 36.  015 602025  	aoc count	;loop back if not done
+ 37.  016 4A2013  	jlt copy_char
+ 38.  017 000005  new_line:	lda# next_line_value	;move cursor to next line
+ 39.  018 712316  	outb CRT_CNTL
+ 40.  019 402004  	jmp next_rec
+ 41.  01A FFFFFF  stop:	hlt
+ 42.              
+ 43.              	.equ B_SIZE, 30	;max characters per record
+ 44.  01B FFFFFFFFFFFFFFFF  buffer:	.blkw (B_SIZE+2)/3	;buffer length is rounded up
+ 45.  025 FFFFFFFFFFFFFFFF  count:	.blkw 1
+
+                     SYMBOL TABLE CONTENTS
+
+00001B = BUFFER          00001E = B_SIZE          00000D = COMPLETE        
+000013 = COPY_CHAR       000025 = COUNT           000316 = CRT_CNTL        
+000317 = CRT_DATA        000008 = EOT_BIT         000000 = MAIN            
+000020 = MOUNTED_BIT     000017 = NEW_LINE        000005 = NEXT_LINE_VALUE 
+000004 = NEXT_REC        000008 = POLL            000010 = READ_BITS       
+00001A = STOP            000022 = TDR_ADDR        000020 = TDR_CNTL        
+000021 = TDR_LEN         000020 = TDR_STAT        

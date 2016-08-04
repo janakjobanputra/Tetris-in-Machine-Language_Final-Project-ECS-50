@@ -1,0 +1,756 @@
+          	.EQU KBD_CNTL,  	$000
+          	.EQU KBD_STAT,  	$000
+          	.EQU KBD_DATA,  	$001
+          	.EQU KBD_FLUSH, 	$40
+          	.EQU TIM_CNTL,      	$030
+          	.EQU TIM_STAT,      	$030
+          	.EQU TIM_VALUE,     	$031
+          	.EQU TIM_COUNT,     	$034
+        	.EQU INTERRUPT_ENA,           $80
+          	.EQU RESET_READY_BIT,         $40
+          	.EQU START_AFTER_LOAD,        $10
+          	.EQU ENABLE_RESET_AND_START,  $D0
+          	.EQU ENABLE_AND_RESET,        $C0
+
+          	.EQU CRT_BUFFER,    	$100
+          	.EQU BOTTOM_RIGHT,  	$313
+          	.EQU CRT_XREG,      	$314
+	.EQU CRT_YREG,      	$315
+          	.EQU CRT_CNTL,      	$316
+          	.EQU CRT_DATA,      	$317
+	.EQU CRT_ROWS,      	14
+          	.EQU CRT_COLS,      	38
+          	.EQU CLEAR_DISPLAY, 	$01
+	.EQU HOME,		$04
+
+          	.EQU PUT_NUM,       	$E00      ; MINI_OS JSRS
+          	.EQU GET_NUM,       	$E01
+	.EQU GET_STR,		$E04
+          	.EQU PUT_STR,       	$E05
+          	.EQU PUT_NL,        	$E06
+          	.EQU PUT_NUM2,      	$E07
+          	.EQU PUT_CHR,       	$E08
+
+          	.EQU TOP,		0
+	.EQU BOTTOM,		13
+	.equ MAX_RIGHT,	37
+	.equ LEFT_ARROW,	'K'
+	.equ RIGHT_ARROW,	'M'
+	.equ UP_ARROW,		'H'
+	.equ DOWN_ARROW,	'P'
+	.EQU LEFT,		0
+	.EQU RIGHT,		1
+	.EQU QUIT,		'x'
+	.EQU START,		13 ; Enter key
+	.EQU NOKEY,		'n'
+	.equ PATTERNADDR, 	0
+	.equ ROTATION,		1
+	.equ LOCATION,		2
+	.EQU PLAY_DELAY,	1 ; # of timer iterations before tetromino moves
+	.EQU INTERMISSION_DELAY,	10; # of timer iterations while Game Over shown
+
+  	LDS#  	$E00
+  	CIE
+	psh#	seedPromptLen
+	psh#	seedPrompt
+	jsr	PUT_STR
+	ads#	2
+	jsr	GET_NUM
+	sta	SEED
+	clr	score	
+	jsr 	showIntro 
+	psh	score
+	psh#	tetro
+	jsr	startNewScreen
+	ads#	2	
+	LDA#	KEYISR
+        	STA 	$FF8
+      	LDA#	ENABLE_AND_RESET
+	OUTB 	KBD_CNTL
+          	LDA       	DELAY
+          	OUTW      	TIM_VALUE
+    	LDA#	TIMERISR
+	STA 	$FFB		; SET-UP TIMER ISR
+	LDA#	ENABLE_RESET_AND_START
+	OUTB 	TIM_CNTL         
+	SIE
+MAINLOOP:	NOP
+	JMP	MAINLOOP
+
+	; void changeTetromino(Tetromino *tetromino, char key)
+	
+	.equ 	changeTetrominoTetromino, 6
+	.equ 	changeTetrominoKey, 5
+	.equ 	changeTetrominoTempTetromino, 0  ; 0-2
+changeTetromino:
+	bgn# 	3
+	psha
+	pshx
+	ldx#	2
+changeTetromino1:
+	lda& ! 	changeTetrominoTetromino
+	sta+ ! 	changeTetrominoTempTetromino
+	soj	changeTetromino1	; tempTeteromino = tetromino
+	lda !	changeTetrominoKey
+	cma#	UP_ARROW
+	jne	changeTetromino2
+	ldx#	ROTATION
+	lda+ !	changeTetrominoTempTetromino	; accum = tempTeteromino->rotation
+	ada#	1
+	mod#	4
+	sta+ !	changeTetrominoTempTetromino	; tempTeteromino->roation = (accum + 1) % 4
+	jmp	changeTetromino5
+changeTetromino2:
+	ldx#	LOCATION	
+	cma#	DOWN_ARROW
+	jne	changeTetromino3
+	lda+ !	changeTetrominoTempTetromino	; accum = tempTeteromino->location
+	ada#	38
+	sta+ !	changeTetrominoTempTetromino
+	jmp 	changeTetromino5
+changeTetromino3:
+	cma#	LEFT_ARROW
+	jne	changeTetromino4
+	dec+ !	changeTetrominoTempTetromino	; --tempTeteromino->location
+	jmp 	changeTetromino5
+changeTetromino4:
+	cma#	RIGHT_ARROW
+	jne	changeTetromino5
+	inc+ !	changeTetrominoTempTetromino	; ++tempTeteromino->location
+changeTetromino5:
+	psh !	changeTetrominoTetromino
+	psh#	' '
+	jsr	printTetromino		; erase previous tetromino
+	ads#	2
+	psh# !	changeTetrominoTempTetromino
+	jsr	checkMove
+	ads#	1
+	cma#	0
+	jeq	changeTetromino7	; move unacceptable so do not copy
+	ldx#	2
+changeTetromino6:
+	lda+ ! 	changeTetrominoTempTetromino
+	sta& ! 	changeTetrominoTetromino
+	soj	changeTetromino6	; teteromino = tempTetromino	
+changeTetromino7:
+	psh !	changeTetrominoTetromino
+	psh#	'X'
+	jsr	printTetromino		; erase previous tetromino
+	ads#	2
+	popx
+	popa
+	fin# 	3
+	rtn	; changeTetromino()
+
+	;int checkMove(Tetromino *tetromino)  return 0 = bad move
+	.equ	checkMoveTetromino, 4
+	.equ	checkMovePos, 1
+	.equ	checkMoveI, 0
+checkMove:	bgn#	2
+	pshx
+	clr !	checkMoveI
+checkMove1:	lda !	checkMoveI
+	cma#	4
+	jge	checkMoveDone 	; if got here then everything is OK and ACC == 4 
+	ldx#	patternAddr
+	lda& !	checkMoveTetromino	; accum = tetromino->patternAddr
+	sta !	checkMovePos	; pos = tetromino->patternAddr
+	ldx#	ROTATION
+	lda& !	checkMoveTetromino	; accum = tetromino->rotation
+	mul#	4
+	ada !	checkMoveI		
+	tax
+	lda& ! 	checkMovePos	; accum = pos[rotation * 4 + i] 
+	ldx#	LOCATION
+	ada& ! 	checkMoveTetromino ; accum += tetromino->location, so accum is position within CRT buffer
+	cma#	1
+	jlt	checkMoveBad	; pos < 1
+	sta !	checkMovePos	; pos = tetromino->location + patternAddr[rotation * 4 + i] 
+	div#	38
+	cma#	BOTTOM
+	jgt	checkMoveBad	; pos / 38 > BOTTOM
+	lda !	checkMovePos
+	mod#	38
+	cma#	11
+	jge	checkMoveBad		; pos % 38 > 10
+	lda !	checkMovePos
+	ada#	CRT_BUFFER
+	sta !	checkMovePos
+	inb* !	checkMovePos
+	cma#	' '
+	jne	checkMoveBad	; port[pos] != " "
+	inc !	checkMoveI
+	jmp	checkMove1
+checkMoveBad:  lda# 0
+checkMoveDone:	popx
+	fin#	2
+	rtn	; checkMove()
+
+	;void intermission()
+intermission:	bgn#	0
+	psha
+	lda#	5
+	outb	CRT_YREG
+	lda#	16
+	outb	CRT_XREG
+	psh#	gameOverLen
+	psh#	gameOverPrompt
+	jsr	put_str		; mvaddstr(4, 15, "Game Over ... "
+	ads#	2
+	lda#	INTERMISSION_DELAY
+	sta	TIMER_CNT	;while(advanceTime(10000)); // show Game Over for 5 seconds
+	lda#	0
+	outb	CRT_XREG		; move cursor off screen
+	popa
+	fin#	0
+	rtn	
+
+
+KEYISR:  	PSHA
+	lda#	0
+	outb	KBD_CNTL
+	INB 	KBD_DATA
+	CMA#	QUIT
+	JNE	KEY1
+	HLT		; HALT IF x
+KEY1:	cma#	$1B	; escape so cursor?
+	jne	Keydone ; irrelevant key so skip
+KEY2:	inb	kbd_data	
+	cma#	LEFT_ARROW	; if left arrow
+	jeq	Key3
+	cma#	RIGHT_ARROW	; if right arrow
+	jeq     	Key3
+        	cma#    	UP_ARROW        ; if up arrow
+        	jeq     	Key3
+        	cma#    	DOWN_ARROW      ; if down arrow 
+        	jne	keydone
+key3:	psh#	tetro
+	psha		; key
+	jsr 	changeTetromino
+	ads#	2
+Keydone:	lda#	INTERRUPT_ENA
+	outb	KBD_CNTL
+	POPA		
+	IRTN		; KeyISR()
+
+
+
+	
+
+	
+;int play(int *score, Tetromino *tetromino)
+	.equ	playScore, 11
+	.equ	playTetromino, 10
+	.equ	playCRTAddr2, 7
+	.equ	playCRTAddr, 6
+	.equ	playRow2, 5
+	.equ	playRow, 4
+	.equ	playCol, 3
+	.equ	playTempTetromino, 0
+play:	bgn#	8
+	pshx
+	ldx#	2
+play1:	lda& ! 	playTetromino
+	sta+ ! 	playTempTetromino
+	soj	play1	; tempTeteromino = tetromino		
+	ldx#	LOCATION
+	lda+ !	playTempTetromino
+	ada#	38
+	sta+ !	playTempTetromino  	; tempTetromino.location += 38
+	psh !	playTetromino
+	psh#	' '
+	jsr	printTetromino		; erase tetromino
+	ads#	2
+	psh# !	playTempTetromino
+	jsr	checkMove
+	ads#	1
+	cma#	0
+	jeq	play3		; if cannot move goto play3
+	ldx#	2
+play2:	lda+ !	playTempTetromino
+	sta& !	playTetromino
+	soj	play2
+	psh !	playTetromino
+	psh#	'X'
+	jsr	printTetromino
+	ads#	2
+	lda#	1
+	jmp	playDone
+play3:	psh !	playTetromino
+	psh#	'X'
+	jsr	printTetromino
+	ads#	2
+				;checklines start
+	lda#	13
+	sta !	playRow		; row = 13
+play4:	lda !	playRow
+	cma#	0
+	jlt	play11
+	lda#	1
+	sta !	playCol
+play5:	lda !	playCol
+	cma#	10
+	jgt	play6
+	lda !	playRow
+	mul#	38
+	ada !	playCol
+	ada#	CRT_BUFFER
+	sta !	playCRTAddr
+	inb* !	playCRTAddr
+	cma#	'X'
+	jne	play6	; if (crt[row][col] != "x") break
+	inc !	playCol	; col++
+	jmp	play5
+play6:	lda !	playCol
+	cma#	11
+	jne	play10	; col != 11 so skip moving
+	lda* !	playScore
+	ada#	100
+	sta* !	playScore
+	lda ! 	playRow
+	sba#	1
+	sta !	playRow2	; row2 = row - 1
+play7:	lda !	playRow2
+	cma#	0
+	jlt	play9	; if row2 < 0 then done with row2 loop
+	lda !	playRow2
+	mul#	38
+	ada#	1
+	ada#	CRT_BUFFER
+	sta !	playCRTAddr	; = CRT_BUFFER + row2 * 38 + 1
+	ada#	38
+	sta !	playCRTAddr2	; = CRT_BUFFER + (row2 + 1) * 38 + 1
+	ldx#	9
+play8:	inb* !	playCRTAddr
+	outb* !	playCRTAddr2   ; port[playCRTAddr2] = port[playCRTAddr]
+	inc !	playCRTAddr
+	inc !	playCRTAddr2
+	soj	play8
+	dec !	playRow2	; row2--
+	jmp	play7
+play9:	lda#	CRT_BUFFER + 1		; after row2 loop 
+	sta !	playCRTAddr
+	ldx#	9
+	lda#	' '
+play9a:	outb* !	playCRTAddr	; port[playCRTAddr] = " "
+	inc !	playCRTAddr
+	soj 	play9a	
+	psh* !	playScore
+	jsr	showScore
+	ads#	1
+	jmp	play4	; back to start of row loop
+play10:	dec !	playRow	; else col != 11 row--	;		
+	jmp	play4
+play11:	lda#	CRT_BUFFER + 39 ; after for each row loop
+	sta	playCRTAddr 	; playCRTAddr = &crt[1][1]
+	ldx#	9
+play12:	inb* !	playCRTAddr
+	cma#	'X'
+	jne	play13
+	lda#	0
+	jmp	playDone	; if an "X" in port[playCRTAddr] then return 0
+play13:	inc !	playCRTAddr
+	soj	play12
+	psh !	playTetromino
+	jsr	startTetromino
+	ads#	1
+	lda#	1
+playDone:	popx
+	fin#	8
+	rtn	; play()
+
+	;void printTetromino(const Tetromino *tetromino, char letter)
+	.equ	printTetrominoTetromino, 5
+	.equ	printTetrominoLetter, 4
+	.equ	printTetrominoI, 1
+	.equ	printTetrominoTemp, 0
+printTetromino:
+	bgn#	2
+	psha
+	pshx
+	clr !	printTetrominoI	; i = 0
+printTetromino1:
+	lda !	printTetrominoI
+	cma#	4
+	jeq	printTetrominoDone
+	ldx#	patternAddr
+	lda& !	printTetrominoTetromino	; accum = tetromino->patternAddr
+	sta !	printTetrominoTemp	; temp = tetromino->patternAddr
+	ldx#	ROTATION
+	lda& !	printTetrominoTetromino	; accum = tetromino->rotation
+	mul#	4
+	ada !	printTetrominoI		
+	tax
+	lda& ! 	printTetrominoTemp	; accum = temp[rotation * 4 + i] 
+	ldx#	LOCATION
+	ada& ! 	printTetrominoTetromino
+	ada#	CRT_BUFFER
+	sta !	printTetrominoTemp	; temp = tetromino->location + patternAddr[rotation * 4] + CRT_BUFFER
+	lda !	printTetrominoLetter	
+	outb* !	printTetrominoTemp	; port[temp] = "x"
+	inc !	printTetrominoI
+	jmp printTetromino1
+printTetrominoDone:	
+	popx
+	popa
+	fin#	2
+	rtn
+
+
+; int random(int max) leaves result in accumulator!
+	.equ	random2Max, 2
+	
+random2:	bgn#	0
+	lda	SEED
+	mul#	2789
+	ada#	1997
+	mod#	2048
+	sta	SEED
+	inc !	random2Max
+	mod !	random2Max
+	fin#	0
+	rtn
+	
+
+;void showIntro()
+showIntro:	BGN#	0
+	psha
+	lda#	CLEAR_DISPLAY
+	outb	CRT_CNTL
+	psh#	intro1Len
+	psh#	intro1
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro2Len
+	psh#	intro2
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro3Len
+	psh#	intro3
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro4Len
+	psh#	intro4
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro5Len
+	psh#	intro5
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro6Len
+	psh#	intro6
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro7Len
+	psh#	intro7
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	psh#	intro8Len
+	psh#	intro8
+	jsr 	PUT_STR
+	ads#	2
+	jsr	PUT_NL
+	lda#	KBD_FLUSH
+	outb	KBD_CNTL
+showIntro2:	inb	KBD_STAT
+	jeq	showIntro2	
+	inb	KBD_DATA
+	cma#	START
+	jne	showIntro2
+	popa
+	FIN#	0
+	rtn	; showIntro()
+
+
+
+; void showScore(int score)
+	.equ showScoreScore, 2
+	
+showScore: 	bgn#	0
+	psha
+	lda#	2
+	outb	CRT_YREG
+	lda#	22
+	outb	CRT_XREG
+	lda !	showScoreScore
+	cma#	1000
+	jge	showScore1
+	lda#	'0'
+	outb	CRT_DATA
+	lda !	showScoreScore
+	cma#	100
+	jge	showScore1
+	lda#	'0'
+	outb	CRT_DATA
+	lda#	'0'
+	outb	CRT_DATA
+showScore1:	lda ! 	showScoreScore
+	jsr	put_num2
+	lda#	0
+	outb	CRT_XREG	; hide cursor
+	popa
+	fin#	0
+	rtn	; // showOutcome()
+
+
+	
+
+;void startNewScreen(int score, Tetromino *tetromino)
+
+	.equ	startNewScreenScore, 4
+	.equ	startNewScreenTetromino, 3
+	.equ	startNewScreenY, 0
+startNewScreen:  
+	BGN#	1
+	PSHA
+	PSHX
+	LDA#	PLAY_DELAY
+	STA	TIMER_CNT
+	LDA#	CLEAR_DISPLAY
+        	OUTB	CRT_CNTL	; CLEAR SCREEN
+	lda#	2
+	outb	CRT_YREG
+	lda#	15
+	outb	CRT_XREG
+	psh#	SCOREPROMPTLEN
+	psh#	SCOREPrompt
+	jsr	put_Str;
+	ads#	2
+	lda#	1
+	sta !	startNewScreenY	; y = 1
+startNewScreen1:
+	lda !	startNewScreenY
+	cma#	15
+	jge	startNewScreen2	; y <= 14?
+	outb	CRT_YREG
+	lda#	1
+	outb	CRT_XREG
+	lda#	'|'
+	outb	CRT_DATA		; putChar("|", 0, y)
+	lda#	12
+	outb	CRT_XREG
+	lda#	'|'
+	outb	CRT_DATA		; putChar("|", 11, y)
+	inc !	startNewScreenY	; y++
+	jmp	startNewScreen1
+;	
+startNewScreen2:
+	psh !	startNewScreenScore
+	jsr	showScore
+	ads#	1
+	psh !	startNewScreenTetromino
+	jsr	startTetromino
+	ads#	1	
+	popx
+	popa
+	fin#	1
+	RTN	; startNewScreen()
+
+	; void startTetromino(Tetromino *tetromino)
+	.equ	startTetrominoTetromino, 2
+startTetromino: 
+	bgn#	0
+	psha
+	psh#	5
+	jsr	random2
+	ads#	1
+	ada#	1
+	ldx#	LOCATION
+	sta& !	startTetrominoTetromino	; tetromino->location = random2(5) + 1
+	psh#	6
+	jsr	random2
+	ads#	1
+	mul#	16
+	ada#	patterns		; accum = patterns + shape# * 16
+	ldx#	patternAddr		
+	sta& !	startTetrominoTetromino	; tetromino->patternAddr = &patterns[random2(6) * 16]
+	lda#	0
+	ldx#	ROTATION
+	clr& !	startTetrominoTetromino	; tetromino->rotation = 0	
+	psh !	startTetrominoTetromino
+	psh#	'X'
+	jsr	printTetromino
+	ads#	2
+	popa
+	fin#	0
+	rtn	; startTetromino()
+
+
+TIMERISR: 	PSHA
+          	INC       	timer
+          	lda	timer
+	cma	TIMER_CNT
+	jlt	TIMER_DONE
+	cma#	INTERMISSION_DELAY
+	jne	timerISR1
+	lda#	PLAY_DELAY		; just after intermission
+	sta	TIMER_CNT
+	psh	score
+	psh#	tetro
+	jsr	startNewScreen
+	ads#	2
+	jmp	timerISR2	; After intermission_DELAY return to PLAY_DELAY
+timerISR1:	psh#	score	; Not after intermission
+	psh#	tetro
+	jsr 	play
+	ads#	2	
+	cma#	0
+	jne	timerISR2  ; 1 == can move
+	jsr	intermission
+timerISR2:	clr	Timer	; reset timer count
+TIMER_DONE: 	LDA#      	ENABLE_AND_RESET
+          	OUTB      	TIM_CNTL
+          	POPA
+          	IRTN		; END OF TIMERISR
+
+
+
+	.equ @, $500	
+TIMER_CNT:	.WORD	PLAY_DELAY
+SEED:	.WORD	0
+KEY:	.WORD	
+DELAY:    	.WORD     	4000
+TIMER:	.WORD 	0
+score:	.word	
+
+Tetro:	.BLKW 3	; patternAddr = [0], rotation = [1], location = [2]
+intro1:	.char 'Tetris Introduction', intro1Len
+intro2:	.char 'This is the minimal version of', intro2Len
+intro3:	.char 'tetris.  The game starts when the', intro3Len
+intro4:  	.char 'enter key is pressed.  The game', intro4Len
+intro5:  	.char 'ends when either the user presses x.', intro5Len
+intro6:  	.char 'Instead of this introduction,', intro6Len
+intro7:  	.char 'students should place a', intro7Len
+intro8:  	.char 'description of their options here.', intro8Len
+seedPrompt:	.char 'Please enter a seed', seedPromptLen
+scorePrompt:	.char 'Score:', scorePromptLen
+gameOverPrompt: .char 'Game Over', gameOverLen
+
+patterns:
+	.word 38
+	.word 39
+	.word  40
+	.word  41
+	.word 1
+	.word 39
+	.word 77
+	.word  115
+	.word 38
+	.word 39
+	.word  40
+	.word  41
+	.word 1
+	.word  39
+	.word  77
+	.word  115
+    
+	.word 1
+	.word 39
+	.word  40
+	.word  41
+	.word 1
+	.word 2
+	.word 39
+	.word 77
+	.word 38
+	.word 39
+	.word 40
+	.word 78 
+	.word 1
+	.word 39
+	.word  76
+	.word 77
+    
+	.word 2
+	.word 38
+	.word  39
+	.word  40
+	.word 1
+	.word 39
+	.word 77
+	.word 78
+	.word 38
+	.word  39
+	.word  40
+	.word 76
+	.word 0
+	.word  1
+	.word  39
+	.word  77
+    
+	.word 1
+	.word  2
+	.word  39
+	.word  40
+	.word 1
+	.word  2
+	.word  39
+	.word  40
+	.word 1
+	.word  2
+	.word  39
+	.word  40
+	.word 1
+	.word  2
+	.word  39
+	.word  40
+    
+	.word 1
+	.word  2
+	.word  38
+	.word  39
+	.word 1
+	.word  39
+	.word  40
+	.word  78
+	.word 1
+	.word  2
+	.word  38
+	.word  39
+	.word 1
+	.word  39
+	.word  40
+	.word  78
+    
+	.word 1
+	.word  38
+	.word  39
+	.word  40
+	.word 1
+	.word  39
+	.word  40
+	.word  77
+	.word 38
+	.word  39
+	.word  40
+	.word  77
+	.word 1
+	.word  38
+	.word  39
+	.word  77
+    
+	.word 0
+	.word  1
+	.word  39
+	.word  40
+	.word 2
+	.word  39
+	.word  40
+	.word  77
+	.word 0
+	.word  1
+	.word  39
+	.word  40
+	.word 2
+	.word  39
+	.word  40
+	.word  77
+
+

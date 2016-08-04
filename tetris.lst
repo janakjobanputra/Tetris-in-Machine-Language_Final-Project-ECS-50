@@ -1,0 +1,1125 @@
+LINE ADDR CONTENTS SOURCE LINE
+  1.              	.EQU KBD_CNTL, $000	;keyboard constants
+  2.              	.EQU KBD_STAT, $000
+  3.              	.EQU KBD_DATA, $001
+  4.              	.EQU KBD_FLUSH, $40
+  5.              	.EQU TIM_CNTL, $030 	;time constants
+  6.              	.EQU TIM_STAT, $030 
+  7.              	.EQU TIM_VALUE, $031 
+  8.              	.EQU TIM_COUNT, $034 
+  9.              	.EQU INTERRUPT_ENA, $80	;enable interrupts
+ 10.              	.EQU RESET_READY_BIT, $40 
+ 11.              	.EQU START_AFTER_LOAD, $10 
+ 12.              	.EQU ENABLE_RESET_AND_START, $D0 
+ 13.              	.EQU ENABLE_AND_RESET, $C0 
+ 14.              
+ 15.               
+ 16.              	.EQU CRT_BUFFER, $100	;crt constants
+ 17.              	.EQU BOTTOM_RIGHT, $313 
+ 18.              	.EQU XCRT, $314 
+ 19.              	.EQU YCRT, $315 
+ 20.              	.EQU CRT_CNTL, $316 
+ 21.              	.EQU CRT_CURSOR, $317 
+ 22.              	.EQU CRT_ROWS, 14 
+ 23.              	.EQU CRT_COLS, 38 
+ 24.              	.EQU CLEAR_DISPLAY, $01 
+ 25.              	.EQU HOME, $04
+ 26.              
+ 27.              	.EQU PUT_NUM, $E00	;mini-os jsr's
+ 28.              	.EQU GET_NUM, $E01
+ 29.              	.EQU PUT_STR, $E05
+ 30.              	.EQU PUT_NL, $E06
+ 31.              	.EQU PUT_NUM2, $E07
+ 32.              	.EQU PUT_CHR, $E08
+ 33.              
+ 34.              	.EQU TOP, 0 
+ 35.              	.EQU BOTTOM, 13 
+ 36.              	.EQU MAX_RIGHT, 37 
+ 37.              	.EQU LEFT_ARROW, 'K' 
+ 38.              	.EQU RIGHT_ARROW, 'M' 
+ 39.              	.EQU UP_ARROW, 'H' 
+ 40.              	.EQU DOWN_ARROW, 'P' 
+ 41.              	.EQU LEFT, 0 
+ 42.              	.EQU RIGHT, 1 
+ 43.              	.EQU QUIT, 'x' 
+ 44.              	.EQU START, 13 ; Enter key 
+ 45.              	.EQU NOKEY, 'n' 
+ 46.              
+ 47.              	
+ 48.              	.equ PATTERNADDR, 2
+ 49.              	.equ ROTATION, 1
+ 50.              	.equ LOCATION, 0
+ 51.              	.equ LINE, $7C
+ 52.              	
+ 53.              ;------------------------------------------------------------------------
+ 54.  000 000001  main:	lda# CLEAR_DISPLAY
+ 55.  001 712316  	outb CRT_CNTL
+ 56.  002 4121D9  	jsr showIntro
+ 57.  003 FFF033  	cie
+ 58.              
+ 59.  004 702000  poll:	inb KBD_STAT	;_
+ 60.  005 4B2004  	jge poll	; |
+ 61.  006 702001  	inb KBD_DATA	; |
+ 62.  007 412E00  	jsr PUT_NUM	; |
+ 63.  008 200078  	cma# QUIT	; |- poll for enter or x
+ 64.  009 482227  	jeq done	; |
+ 65.  00A 20000D  	cma# START	; |
+ 66.  00B 492004  	jne poll	;_|
+ 67.              	
+ 68.              	;lda# LINE
+ 69.              	;outb CRT_CURSOR
+ 70.  00C 0822A5  	psh score
+ 71.  00D 0802A6  	psh# tetromino
+ 72.  00E 4120EF  	jsr newScreen
+ 73.  00F 120002  	ads# 2
+ 74.              
+ 75.  010 0000D4  	LDA#	KEYISR
+ 76.  011 042FF8          	STA 	$FF8
+ 77.  012 0000C0        	LDA#	ENABLE_AND_RESET
+ 78.  013 712000  	OUTB 	KBD_CNTL
+ 79.              
+ 80.  014 0022A0  	LDA	PLAY_DELAY
+ 81.  015 732031            	OUTW	TIM_VALUE
+ 82.  016 0001C1      	LDA#	TIMERISR
+ 83.  017 042FFB  	STA 	$FFB		; SET-UP TIMER ISR
+ 84.  018 0000D0  	LDA#	ENABLE_RESET_AND_START
+ 85.  019 712030  	outb TIM_CNTL
+ 86.  01A FFF032  	sie
+ 87.  01B FFF038  mainloop:	nop
+ 88.  01C 40201B  	jmp mainloop
+ 89.              ;whilekeynotx:	
+ 90.              ;	psh# score	;-
+ 91.              ;	psh# tetromino	; |
+ 92.              ;	jsr play	; |-if(play(&score, &tetromino))
+ 93.              ;	ads# 2	; |
+ 94.              ;if:	lda bool	; |
+ 95.              ;	cma# 0	;-|
+ 96.              ;	jeq else	;<- line jump if not true, otherwise advance
+ 97.              ;	jne whilekeynotx
+ 98.              ;dowhile:	;jsr getKey	;do {
+ 99.              ;	lda key	;  key=getkey()
+100.              ;	cma# RIGHT_ARROW	;  if key==RIGHT-----|
+101.              ;	jeq keypressed	;                    |
+102.              ;	cma# LEFT_ARROW	;  if key==LEFT------|
+103.              ;	jeq keypressed	;                    |
+104.              ;	cma# UP_ARROW	;  if key==UP--------|
+105.              ;	jeq keypressed	;                    |
+106.              ;	cma# DOWN_ARROW	;  if key==DOWN------|
+107.              ;	jeq keypressed	;                    |
+108.              ;keypressed:	psh# tetromino	;<-------------------
+109.              ;	psh key
+110.              ;	jsr changeTetromino
+111.              ;	ads#2
+112.              ;	lda key
+113.              ;	cma# QUIT
+114.              ;	jeq done
+115.              ;	jmp dowhile
+116.              
+117.              ;else:	;jsr intermission
+118.              	;psh score
+119.              	;psh# tetromino
+120.              	;jsr startTetromino
+121.              	;ads# 1
+122.              
+123.              ;endwhile:	lda key
+124.              ;	cma# QUIT
+125.              ;	jmp whilekeynotx
+126.  01D 402227  	jmp done
+127.              ;------------------------------------------------------------------------
+128.              	.equ changeTetrominoTetromino, 6
+129.              	.equ changeTetrominoKey, 5
+130.              	.equ changeTempTetromino, 0
+131.  01E 680003  changeTetromino:	bgn# 3
+132.  01F 010002  	ldx#	PATTERNADDR
+133.  020 009006  	lda& ! changeTetrominoTetromino
+134.  021 045000  	sta+ ! changeTempTetromino
+135.  022 010000  	ldx# LOCATION
+136.  023 009006  	lda& ! changeTetrominoTetromino
+137.  024 045000  	sta+ ! changeTempTetromino
+138.  025 010001  	ldx# ROTATION
+139.  026 009006  	lda& ! changeTetrominoTetromino
+140.  027 045000  	sta+ ! changeTempTetromino
+141.  028 0022AA  	lda key
+142.  029 200048  	cma# UP_ARROW
+143.  02A 492030  testkey:	jne notup
+144.  02B 010001  	ldx# ROTATION
+145.  02C 009000  	lda& ! changeTempTetromino
+146.  02D 100001  	ada# 1
+147.  02E 1A0004  	mod# 4
+148.  02F 045000  	sta+ ! changeTempTetromino
+149.  030 200050  notup:	cma# DOWN_ARROW
+150.  031 492036  	jne notdown
+151.  032 010000  	ldx# LOCATION
+152.  033 009000  	lda& ! changeTempTetromino
+153.  034 100026  	ada# 38
+154.  035 045000  	sta+ ! changeTempTetromino
+155.  036 20004D  notdown:	cma# RIGHT_ARROW
+156.  037 49203C  	jne notright
+157.  038 010000  	ldx# LOCATION
+158.  039 009000  	lda& ! changeTempTetromino
+159.  03A 100001  	ada# 1
+160.  03B 045000  	sta+ ! changeTempTetromino
+161.  03C 20004B  notright:	cma# LEFT_ARROW
+162.  03D 49205A  	jne changeTetrominoDone
+163.  03E 010000  	ldx# LOCATION
+164.  03F 009000  	lda& ! changeTempTetromino
+165.  040 140001  	sba# 1
+166.  041 045000  	sta+ ! changeTempTetromino
+167.              
+168.  042 081000  	psh# ! changeTempTetromino
+169.  043 082020  	psh ' '
+170.  044 412167  	jsr printTetromino
+171.  045 120002  	ads#2
+172.              	
+173.  046 0A22A9  	clr bool
+174.  047 081000  	psh# ! changeTempTetromino
+175.  048 41209F  	jsr checkMove	;if(checkMove(&tempTetromino))
+176.  049 120001  	ads# 1
+177.  04A 0022A9  	lda bool
+178.  04B 200000  	cma# 0
+179.  04C 482056  	jeq reprint
+180.  04D 010002  	ldx# PATTERNADDR	;*tetromino=tempTetromino;
+181.  04E 009000  	lda& ! changeTempTetromino
+182.  04F 045006  	sta+ ! changeTetrominoTetromino
+183.  050 010000  	ldx# LOCATION	;*tetromino=tempTetromino;
+184.  051 009000  	lda& ! changeTempTetromino
+185.  052 045006  	sta+ ! changeTetrominoTetromino
+186.  053 010001  	ldx# ROTATION	;*tetromino=tempTetromino;
+187.  054 009000  	lda& ! changeTempTetromino
+188.  055 045006  	sta+ ! changeTetrominoTetromino
+189.              
+190.  056 0802A6  reprint:	psh# tetromino
+191.  057 082058  	psh 'X'
+192.  058 412167  	jsr printTetromino	;printTetromino(tetromino,'X')
+193.  059 120002  	ads#2
+194.              	
+195.  05A 690003  changeTetrominoDone:	fin# 3
+196.  05B FFF040  	rtn
+197.              ;------------------------------------------------------------------------
+198.              	.equ checkLinesScore, 6
+199.              	.equ checkLinesTempChar, 3
+200.              	.equ checkLinesRow2, 2
+201.              	.equ checkLinesCol, 1
+202.              	.equ checkLinesRow, 0
+203.  05C 680004  checkLines:	bgn# 4
+204.  05D 00000D  	lda# 13
+205.  05E 043000  	sta ! checkLinesRow
+206.              checklinesfor1:
+207.  05F 000000  	lda# 0
+208.  060 043001  	sta ! checkLinesCol
+209.  061 1B3001  checklinesforx:	inc ! checkLinesCol
+210.              	
+211.  062 003001  	lda ! checkLinesCol
+212.  063 180026  	mul# 38
+213.  064 103000  	ada ! checkLinesRow
+214.  065 100100  	ada# CRT_BUFFER
+215.  066 042373  	sta crtloc
+216.              	
+217.  067 708373  	inb& crtloc
+218.              	
+219.  068 200058  	cma# 'X'
+220.  069 49206B  	jne endforx
+221.  06A 402061  	jmp checklinesforx
+222.              
+223.  06B 003001  endforx:	lda ! checkLinesCol
+224.  06C 20000B  	cma# 11
+225.  06D 4C2061  	jle checklinesforx
+226.              
+227.  06E 003001  checkLinesif2:	lda ! checkLinesCol
+228.  06F 20000B  	cma# 11
+229.  070 492099  	jne checkLinesElse2
+230.  071 009006  	lda& ! checkLinesScore
+231.  072 100064  	ada# 100
+232.  073 047006  	sta* ! checkLinesScore ;check the *
+233.              
+234.  074 003000  	lda ! checkLinesRow
+235.              	;sba# 1
+236.  075 043002  	sta ! checkLinesRow2
+237.  076 1C3002  checkLinesFor2:	dec ! checkLinesRow2
+238.              
+239.  077 000001  	lda# 1
+240.  078 043001  	sta ! checkLinesCol
+241.  079 1B3001  checkLinesFor3:	inc ! checkLinesCol
+242.              	
+243.              	;lda ! checkLinesRow2
+244.              	;outb XCRT
+245.              	;lda ! checkLinesCol
+246.              	;outb YCRT
+247.  07A 003001  	lda ! checkLinesCol
+248.  07B 180026  	mul# 38
+249.  07C 103002  	ada ! checkLinesRow2
+250.  07D 100100  	ada# CRT_BUFFER
+251.  07E 042373  	sta crtloc
+252.  07F 708373  	inb& crtloc
+253.  080 FFF010  	psha
+254.  081 081003  	psh# ! checkLinesRow2+1
+255.  082 081001  	psh# ! checkLinesCol
+256.  083 412159  	jsr putChar
+257.  084 120003  	ads# 3
+258.              	
+259.  085 003001  endfor3:	lda ! checkLinesCol
+260.  086 20000B  	cma# 11
+261.  087 4C2079  	jle checkLinesFor3
+262.              
+263.  088 003002  endfor2:	lda ! checkLinesRow2
+264.  089 200000  	cma# 0
+265.  08A 4B2076  	jge checkLinesFor2
+266.              
+267.  08B 000001  	lda# 1
+268.  08C 043001  	sta ! checkLinesCol
+269.  08D 1B3001  checkLinesFor4:	inc ! checkLinesCol
+270.  08E 080020  	psh# ' '
+271.  08F 080000  	psh# 0
+272.  090 081001  	psh# ! checkLinesCol
+273.  091 412159  	jsr putChar
+274.  092 120003  	ads# 3
+275.              
+276.  093 003001  endfor4:	lda ! checkLinesCol
+277.  094 20000A  	cma# 10
+278.  095 4C208D  	jle checkLinesFor4
+279.              
+280.  096 0832A5  	psh ! score
+281.  097 41219E  	jsr showScore
+282.  098 120002  	ads# 2	
+283.              	
+284.  099 1C3000  checkLinesElse2:	dec ! checkLinesRow	;else
+285.              
+286.  09A 003000  	lda ! checkLinesRow
+287.  09B 200000  	cma# 0
+288.  09C 4A205F  	jlt checklinesfor1
+289.              
+290.  09D 690004  checkLinesDone:	fin# 4
+291.  09E FFF040  	rtn	
+292.              ;------------------------------------------------------------------------
+293.              	.equ checkMoveTetromino, 8
+294.              	.equ checkMovePosDiv38, 5
+295.              	.equ checkMovePosMod38, 4
+296.              	.equ checkMovePatternLoc, 3
+297.              	.equ checkMoveRotationLoc, 2
+298.              	.equ checkMovePos, 1
+299.              	.equ checkMoveI, 0
+300.  09F 680006  checkMove:	bgn# 6
+301.  0A0 0A3000  	clr ! checkMoveI
+302.  0A1 0A3001  checkMovefor:	clr ! checkMovePos
+303.  0A2 010002  	ldx# PATTERNADDR
+304.  0A3 009008  	lda& ! checkMoveTetromino
+305.  0A4 180010  	mul# 16
+306.  0A5 043003  	sta ! checkMovePatternLoc
+307.              
+308.  0A6 010001  	ldx# ROTATION
+309.  0A7 009008  	lda& ! checkMoveTetromino
+310.  0A8 180004  	mul# 4
+311.  0A9 043002  	sta ! checkMoveRotationLoc
+312.              	
+313.  0AA 003003  	lda ! checkMovePatternLoc
+314.  0AB 103002  	ada ! checkMoveRotationLoc
+315.  0AC 103000  	ada ! checkMoveI
+316.              	
+317.  0AD 043001  	sta ! checkMovePos
+318.  0AE FFF000  	tax
+319.  0AF 004374  	lda+ patterns
+320.  0B0 043001  	sta ! checkMovePos
+321.              	
+322.  0B1 010000  	ldx# LOCATION
+323.  0B2 009008  	lda& ! checkMoveTetromino
+324.  0B3 103001  	ada ! checkMovePos
+325.  0B4 043001  	sta ! checkMovePos
+326.              
+327.  0B5 003001  	lda ! checkMovePos
+328.  0B6 190026  	div# 38
+329.  0B7 043005  	sta ! checkMovePosDiv38		;check if pos/38 > BOTTOM
+330.  0B8 20000C  	cma# BOTTOM-1		; true return 0
+331.  0B9 4D20CC  	jgt checkMoveReturn0
+332.              
+333.  0BA 003001  	lda ! checkMovePos
+334.  0BB 1A0026  	mod# 38
+335.              	;ada# 1
+336.  0BC 043004  	sta ! checkMovePosMod38	;check char at [pos/38][pos%38]
+337.              
+338.  0BD 003005  	lda ! checkMovePosDiv38
+339.              	;sba# 1
+340.  0BE 180026  	mul# 38
+341.  0BF 103004  	ada ! checkMovePosMod38
+342.  0C0 100100  	ada# CRT_BUFFER
+343.              	;ada# CRT_BUFFER
+344.  0C1 042373  	sta crtloc
+345.              	
+346.  0C2 708373  	inb& crtloc 
+347.  0C3 200058  	cma# 'X'
+348.  0C4 4820CC  	jeq checkMoveReturn0
+349.              	
+350.  0C5 1B3000  	inc ! checkMoveI	;i<4, i++
+351.  0C6 003000  	lda ! checkMoveI
+352.  0C7 200004  	cma# 4
+353.  0C8 4A20A1  	jlt checkMovefor
+354.  0C9 000001  	lda# 1
+355.  0CA 0422A9  	sta bool
+356.  0CB 4020CE  	jmp checkMoveDone
+357.              
+358.  0CC 000000  checkMoveReturn0:	lda# 0
+359.  0CD 0422A9  	sta bool	
+360.  0CE 690006  checkMoveDone:	fin# 6
+361.  0CF FFF040  	rtn
+362.              ;------------------------------------------------------------------------
+363.  0D0 680000  intermission:	bgn#0
+364.              	;lda# 5
+365.              	;sta xloc
+366.              	;outb XCRT
+367.              	;lda# 16
+368.              	;sta yloc
+369.              	;outb YCRT
+370.              	;psh# gameoverLen
+371.              	;psh# gameover
+372.              	;jsr PUT_STR
+373.              	;ads# 2
+374.              	;lda# 'x'
+375.              	;sta key
+376.              			;make it wait for 5 seconds
+377.  0D1 402227  	jmp done		;show lives
+378.  0D2 690000  	fin#0
+379.  0D3 FFF040  	rtn
+380.              ;------------------------------------------------------------------------
+381.  0D4 FFF010  keyISR:	PSHA
+382.  0D5 000000  	lda#	0
+383.  0D6 712000  	outb	KBD_CNTL
+384.  0D7 702001  	INB 	KBD_DATA
+385.  0D8 200078  	CMA#	QUIT
+386.  0D9 4920DB  	JNE	KEY1
+387.  0DA FFFFFF  	HLT		; HALT IF 'x'
+388.  0DB 20001B  key1:	cma# $1B
+389.  0DC 4920EB  	jne keydone
+390.              	
+391.  0DD 702001  key2:	inb KBD_DATA
+392.  0DE 20004B  	cma# LEFT_ARROW
+393.  0DF 4820E6  	jeq key3
+394.  0E0 20004D  	cma# RIGHT_ARROW
+395.  0E1 4820E6  	jeq key3
+396.  0E2 200048  	cma# UP_ARROW
+397.  0E3 4820E6  	jeq key3
+398.  0E4 200050  	cma# DOWN_ARROW
+399.  0E5 4820E6  	jeq key3
+400.              	
+401.  0E6 0422AA  key3:	sta key
+402.  0E7 0802A6  	psh# tetromino
+403.  0E8 0822AA  	psh key
+404.  0E9 41201E  	jsr changeTetromino
+405.  0EA 120002  	ads#2
+406.              	
+407.  0EB 000080  keydone:	lda# INTERRUPT_ENA
+408.  0EC 712000  	outb KBD_CNTL
+409.  0ED FFF013  	popa
+410.  0EE FFF041  	irtn
+411.              ;------------------------------------------------------------------------
+412.              	.equ newScreenScore, 3
+413.              	.equ newScreenTetromino, 2
+414.  0EF 680000  newScreen:	bgn# 0
+415.  0F0 000001  	lda# CLEAR_DISPLAY
+416.  0F1 712316  	outb CRT_CNTL
+417.  0F2 0022A4  lrboundary:	lda yloc
+418.  0F3 712315  	outb YCRT
+419.  0F4 000001  	lda# 1
+420.  0F5 0422A3  	sta xloc
+421.  0F6 712314  	outb XCRT
+422.  0F7 00007C  	lda# LINE
+423.  0F8 712317  	outb CRT_CURSOR
+424.  0F9 00000C  	lda# 12
+425.  0FA 0422A3  	sta xloc
+426.  0FB 712314  	outb XCRT
+427.  0FC 00007C  	lda# LINE
+428.  0FD 712317  	outb CRT_CURSOR
+429.  0FE 1B22A4  	inc yloc
+430.  0FF 0022A4  	lda yloc
+431.  100 20000E  	cma# CRT_ROWS
+432.  101 4A20F2  	jlt lrboundary
+433.              
+434.  102 000002  	lda# 2
+435.  103 0422A4  	sta yloc
+436.  104 712315  	outb YCRT
+437.  105 00000F  	lda# 15
+438.  106 0422A3  	sta xloc
+439.  107 712314  	outb XCRT
+440.  108 080007  	psh# scoreStrLen
+441.  109 080298  	psh# scoreStr
+442.  10A 412E05  	jsr PUT_STR
+443.  10B 120002  	ads# 2
+444.              
+445.  10C 0822A5  	psh score
+446.  10D 41219E  	jsr showScore
+447.  10E 120001  	ads# 1
+448.              
+449.  10F 0802A6  	psh# tetromino
+450.  110 4121A6  	jsr startTetromino
+451.  111 120001  	ads#1
+452.              
+453.  112 690000  	fin# 0
+454.  113 FFF040  	rtn
+455.              
+456.              ;------------------------------------------------------------------------
+457.              	.equ playScore, 7
+458.              	.equ playTetromino, 6
+459.              	.equ playTempTetromino, 1
+460.              	.equ playCol, 0
+461.  114 680004  play:	bgn# 4
+462.              
+463.  115 010002  	ldx#	PATTERNADDR	;-|
+464.  116 009006  	lda& ! playTetromino	; |-tempTetromino = *tetromino
+465.  117 045001  	sta+ ! playTempTetromino	; |
+466.  118 010000  	ldx# LOCATION	; |
+467.  119 009006  	lda& ! playTetromino	; |
+468.  11A 045001  	sta+ ! playTempTetromino	; |
+469.  11B 010001  	ldx# ROTATION	; |
+470.  11C 009006  	lda& ! playTetromino	; |
+471.  11D 045001  	sta+ ! playTempTetromino	;_|
+472.              
+473.  11E 010000  	ldx# LOCATION
+474.  11F 003001  	lda ! playTempTetromino
+475.  120 100026  	ada# 38	;tempTetromino.location+= 38;
+476.  121 043001  	sta ! playTempTetromino
+477.              
+478.  122 083006  	psh ! playTetromino			
+479.  123 080020  	psh# ' '		
+480.  124 412167  	jsr printTetromino	; printTetromino(tetromino, ' ')
+481.  125 120002  	ads# 2
+482.              
+483.  126 0A22A9  ifcanmove:	clr bool
+484.  127 081001  	psh# ! playTempTetromino
+485.  128 41209F  	jsr checkMove	;if(checkMove(&tempTetromino))
+486.  129 120001  	ads# 1
+487.              	
+488.              	;psh ! playTetromino			
+489.              	;psh# ' '		
+490.              	;jsr printTetromino	; printTetromino(tetromino, ' ')
+491.              	;ads# 2
+492.              
+493.  12A 0022A9  	lda bool	;if bool is 0 then go to else	
+494.  12B 200000  	cma# 0		
+495.  12C 48213D  	jeq elsecantmove
+496.              
+497.  12D 010002  	ldx# PATTERNADDR	;*tetromino=tempTetromino;
+498.  12E 005001  	lda+ ! playTempTetromino
+499.  12F 049006  	sta& ! playTetromino
+500.  130 010000  	ldx# LOCATION	;*tetromino=tempTetromino;
+501.  131 005001  	lda+ ! playTempTetromino
+502.  132 049006  	sta& ! playTetromino
+503.  133 010001  	ldx# ROTATION	;*tetromino=tempTetromino;
+504.  134 005001  	lda+ ! playTempTetromino
+505.  135 049006  	sta& ! playTetromino
+506.              
+507.  136 083006  	psh ! playTetromino
+508.  137 080058  	psh# 'X'
+509.  138 412167  	jsr printTetromino	;printTetromino(tetromino, 'X')
+510.  139 120002  	ads# 2
+511.              
+512.  13A 000001  	lda# 1	;jump to end of function
+513.  13B 0422A9  	sta bool	;set bool to 1
+514.  13C 402157  	jmp playDone
+515.              
+516.  13D 083006  elsecantmove:	psh ! playTetromino
+517.  13E 080058  	psh# 'X'
+518.  13F 412167  	jsr printTetromino	;printTetromino(tetromino, 'X')
+519.  140 120002  	ads# 2
+520.              
+521.  141 0812A5  	psh# ! score
+522.  142 41205C  	jsr checkLines		;checkLines(score)
+523.  143 120001  	ads# 1
+524.              
+525.  144 000000  	lda# 0
+526.  145 043000  	sta ! playCol
+527.  146 1B3000  startfor:	inc ! playCol	;for loop to check second row x's
+528.  147 003000  	lda ! playCol
+529.  148 180026  	mul# 38
+530.  149 100002  	ada# 2
+531.  14A 100100  	ada# CRT_BUFFER
+532.  14B 042373  	sta crtloc
+533.              	;outb YCRT
+534.              	;lda# 2
+535.              	;outb XCRT
+536.              
+537.  14C 708373  	inb& crtloc
+538.  14D 200058  	cma# 'X'
+539.  14E 482155  	jeq foundX
+540.              
+541.              	;inc ! playCol
+542.  14F 20000A  	cma# 10
+543.  150 4C2146  	jle startfor	;will set bool to 0 if there is an 
+544.  151 402152  	jmp exitfor	;x in the second row
+545.              		;exit function
+546.              
+547.  152 083006  exitfor:	psh ! playTetromino
+548.  153 4121A6  	jsr startTetromino
+549.  154 120001  	ads# 1
+550.              
+551.  155 000000  foundX:	lda# 0
+552.  156 0422A9  	sta bool
+553.  157 690004  playDone:	fin# 4
+554.  158 FFF040  	rtn
+555.              ;------------------------------------------------------------------------
+556.              	.equ putCharLetter, 4
+557.              	.equ putCharX, 3
+558.              	.equ putCharY, 2
+559.  159 680000  putChar:	bgn# 0
+560.  15A 003003  	lda ! putCharX
+561.  15B 100001  	ada# 1
+562.  15C 712314  	outb XCRT
+563.  15D 003002  	lda ! putCharY
+564.  15E 100001  	ada# 1
+565.  15F 712315  	outb YCRT
+566.  160 003004  	lda ! putCharLetter
+567.  161 712317  	outb CRT_CURSOR
+568.  162 0000C8  	lda# 200
+569.  163 712314  	outb XCRT
+570.  164 712315  	outb YCRT
+571.  165 690000  	fin# 0
+572.  166 FFF040  	rtn
+573.              ;------------------------------------------------------------------------
+574.              	.equ printTetrominoTetromino, 9
+575.              	.equ printTetrominoX, 8
+576.              	.equ printTetrominoPosDiv38, 5
+577.              	.equ printTetrominoPosMod38, 4
+578.              	.equ printTetrominoPatternLoc, 3
+579.              	.equ printTetrominoRotationLoc, 2
+580.              	.equ printTetrominoPos, 1
+581.              	.equ printTetrominoI, 0
+582.  167 680006  printTetromino:	bgn#6
+583.  168 0A3000  	clr ! printTetrominoI
+584.  169 0A3004  	clr ! printTetrominoPosMod38
+585.  16A 0A3005  	clr ! printTetrominoPosDiv38
+586.  16B 0A3001  printTetrominoloop:	clr ! printTetrominoPos
+587.  16C 010002  	ldx# PATTERNADDR
+588.  16D 009009  	lda& ! printTetrominoTetromino
+589.              	;sba# 1
+590.  16E 180010  	mul# 16
+591.  16F 043003  	sta ! printTetrominoPatternLoc
+592.              
+593.  170 010001  	ldx# ROTATION
+594.  171 009009  	lda& ! printTetrominoTetromino
+595.  172 180004  	mul# 4
+596.  173 043002  	sta ! printTetrominoRotationLoc
+597.              
+598.  174 003003  	lda ! printTetrominoPatternLoc
+599.  175 103002  	ada ! printTetrominoRotationLoc
+600.  176 103000  	ada ! printTetrominoI
+601.              
+602.  177 043001  	sta ! printTetrominoPos
+603.  178 FFF000  	tax
+604.  179 004374  	lda+ patterns
+605.  17A 043001  	sta ! printTetrominoPos
+606.              
+607.  17B 010000  	ldx# LOCATION
+608.  17C 009009  	lda& ! printTetrominoTetromino
+609.  17D 103001  	ada ! printTetrominoPos
+610.              
+611.  17E 043001  	sta ! printTetrominoPos
+612.              	
+613.  17F 003001  	lda ! printTetrominoPos
+614.  180 1A0026  	mod# 38
+615.  181 043004  	sta ! printTetrominoPosMod38
+616.  182 003001  	lda ! printTetrominoPos
+617.  183 190026  	div# 38
+618.  184 043005  	sta ! printTetrominoPosDiv38
+619.              
+620.  185 083008  	psh ! printTetrominoX
+621.  186 083004  	psh ! printTetrominoPosMod38
+622.  187 083005  	psh ! printTetrominoPosDiv38
+623.  188 412159  	jsr putChar
+624.  189 120003  	ads# 3
+625.  18A 1B3000  	inc ! printTetrominoI
+626.  18B 003000  	lda ! printTetrominoI
+627.  18C 200004  	cma# 4
+628.  18D 4A216B  	jlt printTetrominoLoop
+629.              
+630.  18E 690006  	fin#6
+631.  18F FFF040  	rtn
+632.              ;------------------------------------------------------------------------
+633.              	.equ random2Max, 2
+634.  190 680000  random2:	bgn# 0
+635.  191 0022A2  	lda seed
+636.  192 180AE5  	mul# 2789
+637.  193 1007CD  	ada# 1997
+638.  194 1A0800  	mod# 2048
+639.  195 0422A2  	sta seed
+640.  196 0022A2  	lda seed
+641.              	;jsr PUT_NUM
+642.  197 003002  	lda ! random2Max
+643.  198 100001  	ada# 1
+644.  199 043002  	sta ! random2Max
+645.  19A 0022A2  	lda seed
+646.  19B 1A3002  	mod ! random2Max
+647.              	;jsr PUT_NUM
+648.  19C 690000  	fin# 0
+649.  19D FFF040  	rtn
+650.              ;------------------------------------------------------------------------
+651.              	.equ showScoreScore, 2
+652.  19E 680000  showScore:	bgn# 0
+653.  19F 003002  	lda ! showScoreScore
+654.  1A0 412E00  	jsr PUT_NUM
+655.              
+656.  1A1 0000C8  	lda# 200
+657.  1A2 712314  	outb XCRT
+658.  1A3 712315  	outb YCRT
+659.  1A4 690000  	fin# 0
+660.  1A5 FFF040  	rtn
+661.              
+662.              ;------------------------------------------------------------------------
+663.              	.equ startTetrominoTetromino, 2
+664.  1A6 680000  startTetromino:	bgn# 0
+665.  1A7 080005  	psh# 5
+666.  1A8 412190  	jsr random2
+667.  1A9 120001  	ads# 1
+668.  1AA 080005  	psh# 5
+669.  1AB 412190  	jsr random2
+670.  1AC 120001  	ads# 1
+671.  1AD 100001  	ada# 1
+672.  1AE 010000  	ldx# LOCATION
+673.  1AF 049002  	sta& ! startTetrominoTetromino
+674.              
+675.  1B0 080006  	psh# 6
+676.  1B1 412190  	jsr random2
+677.  1B2 120001  	ads# 1
+678.  1B3 080006  	psh# 6
+679.  1B4 412190  	jsr random2
+680.  1B5 120001  	ads# 1
+681.  1B6 010002  	ldx# PATTERNADDR
+682.  1B7 049002  	sta& ! startTetrominoTetromino
+683.              	
+684.  1B8 000000  	lda# 0
+685.  1B9 010001  	ldx# ROTATION
+686.  1BA 049002  	sta& ! startTetrominoTetromino
+687.              
+688.  1BB 0802A6  	psh# tetromino
+689.  1BC 080058  	psh# 'X'
+690.  1BD 412167  	jsr printTetromino
+691.  1BE 120002  	ads# 2
+692.              	
+693.  1BF 690000  	fin# 0
+694.  1C0 FFF040  	rtn
+695.              ;------------------------------------------------------------------------
+696.  1C1 FFF010  timerISR:	psha
+697.  1C2 002031  	lda TIM_VALUE
+698.  1C3 20229F  	cma INTERMISSION_DELAY
+699.  1C4 4921CC  	jne timerISR1
+700.  1C5 0022A0  	lda play_delay
+701.  1C6 042031  	sta TIM_VALUE
+702.  1C7 0822A5  	psh score
+703.  1C8 0802A6  	psh# tetromino
+704.  1C9 4120EF  	jsr newScreen
+705.  1CA 120002  	ads# 2
+706.  1CB 4021D4  	jmp timerdone
+707.              
+708.  1CC 0802A5  timerISR1:	psh# score
+709.  1CD 0802A6  	psh# tetromino
+710.  1CE 412114  	jsr play
+711.  1CF 120002  	ads# 2
+712.  1D0 0022A9  	lda bool
+713.  1D1 200000  	cma# 0
+714.  1D2 4821D4  	jeq timerdone
+715.  1D3 4021CC  	jmp timerISR1
+716.              
+717.  1D4 4120D0  timerdone:	jsr intermission
+718.  1D5 0000C0  	lda# ENABLE_AND_RESET
+719.  1D6 712030  	outb TIM_CNTL
+720.  1D7 FFF013  	popa
+721.  1D8 FFF041  	irtn
+722.              ;------------------------------------------------------------------------
+723.  1D9 680000  showIntro:	bgn# 0
+724.  1DA 080004  	psh# seedPromptLen
+725.  1DB 080228  	psh# seedPrompt
+726.  1DC 412E05  	jsr PUT_STR
+727.  1DD 120002  	ads# 2
+728.  1DE 412E01  	jsr GET_NUM
+729.  1DF 0422A2  	sta seed
+730.              
+731.  1E0 08001F  	psh# speedPromptLen
+732.  1E1 08022A  	psh# speedPrompt
+733.  1E2 412E05  	jsr PUT_STR
+734.  1E3 120002  	ads#2
+735.  1E4 412E01  	jsr GET_NUM
+736.  1E5 180064  	mul# 100
+737.  1E6 0422A1  	sta speed
+738.              
+739.  1E7 000001  	lda# CLEAR_DISPLAY
+740.  1E8 712316  	outb CRT_CNTL
+741.              
+742.  1E9 080024  	psh# intro1Len
+743.  1EA 080235  	psh# intro1
+744.  1EB 412E05  	jsr PUT_STR
+745.  1EC 120002  	ads# 2
+746.  1ED 412E06  	jsr PUT_NL
+747.  1EE 080025  	psh# intro2Len
+748.  1EF 080241  	psh# intro2
+749.  1F0 412E05  	jsr PUT_STR
+750.  1F1 120002  	ads# 2
+751.  1F2 412E06  	jsr PUT_NL
+752.  1F3 080025  	psh# intro3Len
+753.  1F4 08024E  	psh# intro3
+754.  1F5 412E05  	jsr PUT_STR
+755.  1F6 120002  	ads# 2
+756.  1F7 412E06  	jsr PUT_NL
+757.  1F8 080024  	psh# intro4Len
+758.  1F9 08025B  	psh# intro4
+759.  1FA 412E05  	jsr PUT_STR
+760.  1FB 120002  	ads# 2
+761.  1FC 412E06  	jsr PUT_NL
+762.  1FD 080025  	psh# intro5Len
+763.  1FE 080267  	psh# intro5
+764.  1FF 412E05  	jsr PUT_STR
+765.  200 120002  	ads# 2
+766.  201 412E06  	jsr PUT_NL
+767.  202 080011  	psh# intro6Len
+768.  203 080274  	psh# intro6
+769.  204 412E05  	jsr PUT_STR
+770.  205 120002  	ads# 2
+771.  206 412E06  	jsr PUT_NL
+772.  207 08000B  	psh# intro7Len
+773.  208 08027A  	psh# intro7
+774.  209 412E05  	jsr PUT_STR
+775.  20A 120002  	ads# 2
+776.  20B 412E06  	jsr PUT_NL
+777.  20C 08000B  	psh# intro8Len
+778.  20D 08027E  	psh# intro8
+779.  20E 412E05  	jsr PUT_STR
+780.  20F 120002  	ads# 2
+781.  210 412E06  	jsr PUT_NL
+782.  211 08000B  	psh# intro9Len
+783.  212 080282  	psh# intro9
+784.  213 412E05  	jsr PUT_STR
+785.  214 120002  	ads# 2
+786.  215 412E06  	jsr PUT_NL
+787.  216 08000B  	psh# intro10Len
+788.  217 080286  	psh# intro10
+789.  218 412E05  	jsr PUT_STR
+790.  219 120002  	ads# 2
+791.  21A 412E06  	jsr PUT_NL
+792.  21B 08000B  	psh# intro11Len
+793.  21C 08028A  	psh# intro11
+794.  21D 412E05  	jsr PUT_STR
+795.  21E 120002  	ads# 2
+796.  21F 412E06  	jsr PUT_NL
+797.  220 08001E  	psh# intro12Len
+798.  221 08028E  	psh# intro12
+799.  222 412E05  	jsr PUT_STR
+800.  223 120002  	ads# 2
+801.  224 412E06  	jsr PUT_NL
+802.  225 690000  	fin# 0
+803.  226 FFF040  	rtn
+804.              ;------------------------------------------------------------------------
+805.              done:	;lda# CLEAR_DISPLAY
+806.              	;outb CRT_CNTL
+807.  227 FFFFFF  	hlt
+808.              ;------------------------------------------------------------------------
+809.  228 536565  seedPrompt:	.char 'Seed', seedPromptLen
+      229 642020
+810.  22A 537065  speedPrompt:	.char 'Speed for demo (1=fast, 9=slow)', speedPromptLen
+      22B 656420
+      22C 666F72
+      22D 206465
+      22E 6D6F20
+      22F 28313D
+      230 666173
+      231 742C20
+      232 393D73
+      233 6C6F77
+      234 292020
+811.  235 2A2A2A  intro1:	.char '***********TETRIS IN CUSP***********', intro1Len
+      236 2A2A2A
+      237 2A2A2A
+      238 2A2A54
+      239 455452
+      23A 495320
+      23B 494E20
+      23C 435553
+      23D 502A2A
+      23E 2A2A2A
+      23F 2A2A2A
+      240 2A2A2A
+812.  241 546869  intro2:	.char 'This is the minimal version of Tetris',intro2Len
+      242 732069
+      243 732074
+      244 686520
+      245 6D696E
+      246 696D61
+      247 6C2076
+      248 657273
+      249 696F6E
+      24A 206F66
+      24B 205465
+      24C 747269
+      24D 732020
+813.  24E 546865  intro3:	.char 'The game starts when the enter key is',intro3Len
+      24F 206761
+      250 6D6520
+      251 737461
+      252 727473
+      253 207768
+      254 656E20
+      255 746865
+      256 20656E
+      257 746572
+      258 206B65
+      259 792069
+      25A 732020
+814.  25B 707265  intro4:	.char 'pressed. The game ends when the user',intro4Len
+      25C 737365
+      25D 642E20
+      25E 546865
+      25F 206761
+      260 6D6520
+      261 656E64
+      262 732077
+      263 68656E
+      264 207468
+      265 652075
+      266 736572
+815.  267 707265  intro5:	.char 'presses x. The following options have',intro5Len
+      268 737365
+      269 732078
+      26A 2E2054
+      26B 686520
+      26C 666F6C
+      26D 6C6F77
+      26E 696E67
+      26F 206F70
+      270 74696F
+      271 6E7320
+      272 686176
+      273 652020
+816.  274 626565  intro6:	.char 'been implemented:',intro6Len
+      275 6E2069
+      276 6D706C
+      277 656D65
+      278 6E7465
+      279 643A20
+817.  27A 312E20  intro7:	.char '1. Option 1',intro7Len
+      27B 4F7074
+      27C 696F6E
+      27D 203120
+818.  27E 322E20  intro8:	.char '2. Option 2',intro8Len
+      27F 4F7074
+      280 696F6E
+      281 203220
+819.  282 332E20  intro9:	.char '3. Option 3',intro9Len
+      283 4F7074
+      284 696F6E
+      285 203320
+820.  286 342E20  intro10:	.char '4. Option 4',intro10Len
+      287 4F7074
+      288 696F6E
+      289 203420
+821.  28A 352E20  intro11:	.char '5. Option 5',intro11Len
+      28B 4F7074
+      28C 696F6E
+      28D 203520
+822.  28E 507265  intro12:	.char 'Press Enter to start the game.',intro12Len
+      28F 737320
+      290 456E74
+      291 657220
+      292 746F20
+      293 737461
+      294 727420
+      295 746865
+      296 206761
+      297 6D652E
+823.  298 53636F  scoreStr:	.char 'Score: ', scoreStrLen
+      299 72653A
+      29A 202020
+824.  29B 47616D  gameover:	.char 'Game Over!',gameoverLen
+      29C 65204F
+      29D 766572
+      29E 212020
+825.  29F 0030D4  INTERMISSION_DELAY:	.word 12500
+826.  2A0 0009C4  PLAY_DELAY:	.word 2500
+827.  2A1 000000  speed:	.word
+828.  2A2 000000  seed:	.word
+829.  2A3 000001  xloc:	.word 1
+830.  2A4 000001  yloc:	.word 1
+831.  2A5 000000  score:	.word 0
+832.  2A6 FFFFFFFFFFFFFFFF  tetromino:	.blkw 3
+833.  2A9 000000  bool:	.word 0
+834.  2AA FFFFFFFFFFFFFFFF  key:	.blkw 100
+835.  30E FFFFFFFFFFFFFFFF  buffer:	.blkw 100
+836.  372 000000  bufferCount:	.word
+837.  373 000000  crtloc:	.word
+838.              ;------------------------------------------------------------------------
+839.              ; what follows is the 3D array for all the positions for all
+840.              ; the rotations on the screen of the 7 different patterns
+841.  374 000026  patterns:	.word 38	;1
+842.  375 000027  	.word  39
+843.  376 000028  	.word  40
+844.  377 000029  	.word  41
+845.  378 000001  	.word 1
+846.  379 000027  	.word  39
+847.  37A 00004D  	.word  77
+848.  37B 000073  	.word  115
+849.  37C 000026  	.word 38
+850.  37D 000027  	.word  39
+851.  37E 000028  	.word  40
+852.  37F 000029  	.word  41
+853.  380 000001  	.word 1
+854.  381 000027  	.word  39
+855.  382 00004D  	.word  77
+856.  383 000073  	.word  115
+857.              
+858.  384 000001  	.word 1	;2
+859.  385 000027  	.word  39
+860.  386 000028  	.word  40
+861.  387 000029  	.word  41
+862.  388 000001  	.word 1
+863.  389 000002  	.word  2
+864.  38A 000027  	.word  39
+865.  38B 00004D  	.word  77
+866.  38C 000026  	.word 38
+867.  38D 000027  	.word  39
+868.  38E 000028  	.word  40
+869.  38F 00004E  	.word  78
+870.  390 000001  	.word 1
+871.  391 000027  	.word  39
+872.  392 00004C  	.word  76
+873.  393 00004D  	.word  77
+874.              
+875.  394 000002  	.word 2	;3
+876.  395 000026  	.word  38
+877.  396 000027  	.word  39
+878.  397 000028  	.word  40
+879.  398 000001  	.word 1
+880.  399 000027  	.word  39
+881.  39A 00004D  	.word  77
+882.  39B 00004E  	.word  78
+883.  39C 000026  	.word 38
+884.  39D 000027  	.word  39
+885.  39E 000028  	.word  40
+886.  39F 00004C  	.word  76
+887.  3A0 000000  	.word 0
+888.  3A1 000001  	.word  1
+889.  3A2 000027  	.word  39
+890.  3A3 00004D  	.word  77
+891.              
+892.  3A4 000001  	.word 1	;4
+893.  3A5 000002  	.word  2
+894.  3A6 000027  	.word  39
+895.  3A7 000028  	.word  40
+896.  3A8 000001  	.word 1
+897.  3A9 000002  	.word  2
+898.  3AA 000027  	.word  39
+899.  3AB 000028  	.word  40
+900.  3AC 000001  	.word 1
+901.  3AD 000002  	.word  2
+902.  3AE 000027  	.word  39
+903.  3AF 000028  	.word  40
+904.  3B0 000001  	.word 1
+905.  3B1 000002  	.word  2
+906.  3B2 000027  	.word  39
+907.  3B3 000028  	.word  40
+908.              
+909.  3B4 000001  	.word 1	;5
+910.  3B5 000002  	.word  2
+911.  3B6 000026  	.word  38
+912.  3B7 000027  	.word  39
+913.  3B8 000001  	.word 1
+914.  3B9 000027  	.word  39
+915.  3BA 000028  	.word  40
+916.  3BB 00004E  	.word  78
+917.  3BC 000001  	.word 1
+918.  3BD 000002  	.word  2
+919.  3BE 000026  	.word  38
+920.  3BF 000027  	.word  39
+921.  3C0 000001  	.word 1
+922.  3C1 000027  	.word  39
+923.  3C2 000028  	.word  40
+924.  3C3 00004E  	.word  78
+925.              
+926.  3C4 000001  	.word 1	;6
+927.  3C5 000026  	.word  38
+928.  3C6 000027  	.word  39
+929.  3C7 000028  	.word  40
+930.  3C8 000001  	.word 1
+931.  3C9 000027  	.word  39
+932.  3CA 000028  	.word  40
+933.  3CB 00004D  	.word  77
+934.  3CC 000026  	.word 38
+935.  3CD 000027  	.word  39
+936.  3CE 000028  	.word  40
+937.  3CF 00004D  	.word  77
+938.  3D0 000001  	.word 1
+939.  3D1 000026  	.word  38
+940.  3D2 000027  	.word  39
+941.  3D3 00004D  	.word  77
+942.              
+943.  3D4 000000  	.word 0	;7
+944.  3D5 000001  	.word  1
+945.  3D6 000027  	.word  39
+946.  3D7 000028  	.word  40
+947.  3D8 000002  	.word 2
+948.  3D9 000027  	.word  39
+949.  3DA 000028  	.word  40
+950.  3DB 00004D  	.word  77
+951.  3DC 000000  	.word 0
+952.  3DD 000001  	.word  1
+953.  3DE 000027  	.word  39
+954.  3DF 000028  	.word  40
+955.  3E0 000002  	.word 2
+956.  3E1 000027  	.word  39
+957.  3E2 000028  	.word  40
+958.  3E3 00004D  	.word  77
+
+                     SYMBOL TABLE CONTENTS
+
+0002A9 = BOOL            00000D = BOTTOM          000313 = BOTTOM_RIGHT    
+00030E = BUFFER          000372 = BUFFERCOUNT     000000 = CHANGETEMPTETROMINO
+00001E = CHANGETETROMINO 00005A = CHANGETETROMINODONE000005 = CHANGETETROMINOKEY
+000006 = CHANGETETROMINOTETROMINO00005C = CHECKLINES      000001 = CHECKLINESCOL   
+00009D = CHECKLINESDONE  000099 = CHECKLINESELSE2 00005F = CHECKLINESFOR1  
+000076 = CHECKLINESFOR2  000079 = CHECKLINESFOR3  00008D = CHECKLINESFOR4  
+000061 = CHECKLINESFORX  00006E = CHECKLINESIF2   000000 = CHECKLINESROW   
+000002 = CHECKLINESROW2  000006 = CHECKLINESSCORE 000003 = CHECKLINESTEMPCHAR
+00009F = CHECKMOVE       0000CE = CHECKMOVEDONE   0000A1 = CHECKMOVEFOR    
+000000 = CHECKMOVEI      000003 = CHECKMOVEPATTERNLOC000001 = CHECKMOVEPOS    
+000005 = CHECKMOVEPOSDIV38000004 = CHECKMOVEPOSMOD380000CC = CHECKMOVERETURN0
+000002 = CHECKMOVEROTATIONLOC000008 = CHECKMOVETETROMINO000001 = CLEAR_DISPLAY   
+000373 = CRTLOC          000100 = CRT_BUFFER      000316 = CRT_CNTL        
+000026 = CRT_COLS        000317 = CRT_CURSOR      00000E = CRT_ROWS        
+000227 = DONE            000050 = DOWN_ARROW      00013D = ELSECANTMOVE    
+0000C0 = ENABLE_AND_RESET0000D0 = ENABLE_RESET_AND_START000088 = ENDFOR2         
+000085 = ENDFOR3         000093 = ENDFOR4         00006B = ENDFORX         
+000152 = EXITFOR         000155 = FOUNDX          00029B = GAMEOVER        
+00000A = GAMEOVERLEN     000E01 = GET_NUM         000004 = HOME            
+000126 = IFCANMOVE       0000D0 = INTERMISSION    00029F = INTERMISSION_DELAY
+000080 = INTERRUPT_ENA   000235 = INTRO1          000286 = INTRO10         
+00000B = INTRO10LEN      00028A = INTRO11         00000B = INTRO11LEN      
+00028E = INTRO12         00001E = INTRO12LEN      000024 = INTRO1LEN       
+000241 = INTRO2          000025 = INTRO2LEN       00024E = INTRO3          
+000025 = INTRO3LEN       00025B = INTRO4          000024 = INTRO4LEN       
+000267 = INTRO5          000025 = INTRO5LEN       000274 = INTRO6          
+000011 = INTRO6LEN       00027A = INTRO7          00000B = INTRO7LEN       
+00027E = INTRO8          00000B = INTRO8LEN       000282 = INTRO9          
+00000B = INTRO9LEN       000000 = KBD_CNTL        000001 = KBD_DATA        
+000040 = KBD_FLUSH       000000 = KBD_STAT        0002AA = KEY             
+0000DB = KEY1            0000DD = KEY2            0000E6 = KEY3            
+0000EB = KEYDONE         0000D4 = KEYISR          000000 = LEFT            
+00004B = LEFT_ARROW      00007C = LINE            000000 = LOCATION        
+0000F2 = LRBOUNDARY      000000 = MAIN            00001B = MAINLOOP        
+000025 = MAX_RIGHT       0000EF = NEWSCREEN       000003 = NEWSCREENSCORE  
+000002 = NEWSCREENTETROMINO00006E = NOKEY           000036 = NOTDOWN         
+00003C = NOTRIGHT        000030 = NOTUP           000002 = PATTERNADDR     
+000374 = PATTERNS        000114 = PLAY            000000 = PLAYCOL         
+000157 = PLAYDONE        000007 = PLAYSCORE       000001 = PLAYTEMPTETROMINO
+000006 = PLAYTETROMINO   0002A0 = PLAY_DELAY      000004 = POLL            
+000167 = PRINTTETROMINO  000000 = PRINTTETROMINOI 00016B = PRINTTETROMINOLOOP
+000003 = PRINTTETROMINOPATTERNLOC000001 = PRINTTETROMINOPOS000005 = PRINTTETROMINOPOSDIV38
+000004 = PRINTTETROMINOPOSMOD38000002 = PRINTTETROMINOROTATIONLOC000009 = PRINTTETROMINOTETROMINO
+000008 = PRINTTETROMINOX 000159 = PUTCHAR         000004 = PUTCHARLETTER   
+000003 = PUTCHARX        000002 = PUTCHARY        000E08 = PUT_CHR         
+000E06 = PUT_NL          000E00 = PUT_NUM         000E07 = PUT_NUM2        
+000E05 = PUT_STR         000078 = QUIT            000190 = RANDOM2         
+000002 = RANDOM2MAX      000056 = REPRINT         000040 = RESET_READY_BIT 
+000001 = RIGHT           00004D = RIGHT_ARROW     000001 = ROTATION        
+0002A5 = SCORE           000298 = SCORESTR        000007 = SCORESTRLEN     
+0002A2 = SEED            000228 = SEEDPROMPT      000004 = SEEDPROMPTLEN   
+0001D9 = SHOWINTRO       00019E = SHOWSCORE       000002 = SHOWSCORESCORE  
+0002A1 = SPEED           00022A = SPEEDPROMPT     00001F = SPEEDPROMPTLEN  
+00000D = START           000146 = STARTFOR        0001A6 = STARTTETROMINO  
+000002 = STARTTETROMINOTETROMINO000010 = START_AFTER_LOAD00002A = TESTKEY         
+0002A6 = TETROMINO       0001D4 = TIMERDONE       0001C1 = TIMERISR        
+0001CC = TIMERISR1       000030 = TIM_CNTL        000034 = TIM_COUNT       
+000030 = TIM_STAT        000031 = TIM_VALUE       000000 = TOP             
+000048 = UP_ARROW        000314 = XCRT            0002A3 = XLOC            
+000315 = YCRT            0002A4 = YLOC            

@@ -1,0 +1,45 @@
+	.EQU TDR_CNTL, $020
+	.EQU TDR_STAT, $020
+	.EQU TDR_LEN, $021
+	.EQU TDR_ADDR, $022
+
+	.EQU READ_BITS, $10
+	.EQU MOUNTED_BIT, $20
+	.EQU EOT_BIT, $08
+
+	.EQU CRT_CNTL, $316
+	.EQU CRT_DATA, $317
+
+	.EQU NEXT_LINE_VALUE, $05
+
+main:	inb TDR_STAT	;check for tape drive ready
+	jge STOP
+	lda# buffer	;load transfer address
+	outw TDR_ADDR
+next_rec:	lda# B_SIZE	;load transfer length
+	outb TDR_LEN
+	lda# READ_BITS	;initiate read
+	outb TDR_CNTL
+poll:	inb TDR_STAT	;wait for operation complete
+	jlt complete
+	and# MOUNTED_BIT	;check that tape still mounted
+	jeq STOP	;if not an error has occurred
+	jmp poll
+complete:	and# EOT_BIT	;check for end of tape
+	jne stop
+	inb TDR_LEN	;get transfer length
+	jeq new_line	;if zero skip data output
+	sta count	;initialize counter count
+	ldx# 0
+copy_char:	ldc buffer	;get character
+	outb CRT_DATA	;copy to screen
+	aoc count	;loop back if not done
+	jlt copy_char
+new_line:	lda# next_line_value	;move cursor to next line
+	outb CRT_CNTL
+	jmp next_rec
+stop:	hlt
+
+	.equ B_SIZE, 30	;max characters per record
+buffer:	.blkw (B_SIZE+2)/3	;buffer length is rounded up
+count:	.blkw 1
